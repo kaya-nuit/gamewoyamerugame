@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ゲームをやめるゲーム</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --primary-color: #dc3545;
+            --primary-hover: #bd2130;
+            --secondary-color: #6c757d;
+            --secondary-hover: #5a6268;
+            --accent-color: #007bff;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            transition: background-color 1s ease;
+        }
+
+        .game-container {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            position: relative;
+            min-height: 320px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .score-board {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 0.9rem;
+            color: var(--secondary-color);
+            font-weight: bold;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+
+        .description {
+            font-size: 1rem;
+            color: var(--secondary-color);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        button {
+            padding: 0.8rem 2rem;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        button:active {
+            transform: scale(0.96);
+        }
+
+        .btn-danger {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn-secondary {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--secondary-hover);
+        }
+
+        /* 逃げるボタン専用のスタイル：ワープではなく素早く滑らかに移動 */
+        .fleeing-btn {
+            position: absolute !important;
+            z-index: 10;
+            transition: left 0.15s ease-out, top 0.15s ease-out !important;
+        }
+
+        /* プログレスバー */
+        .progress-container {
+            width: 100%;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-top: 1.5rem;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 20px;
+            background-color: var(--accent-color);
+            transition: width 0.05s linear;
+        }
+
+        /* 暗転画面 */
+        .blackout {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #000000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: #ffffff;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 2s ease;
+        }
+
+        .blackout-text {
+            font-size: 1.2rem;
+            margin: 10px 0;
+            opacity: 0;
+            transition: opacity 1.5s ease;
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        .final-score {
+            font-size: 1rem;
+            color: #aaaaaa;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-container" id="gameCard">
+        <div class="score-board">引き止められた回数: <span id="score">0</span></div>
+        <h1 id="title">ゲームをやめるゲーム</h1>
+        <div class="description" id="message">画面中央のボタンを押すとゲームを終了します。</div>
+        
+        <div class="progress-container" id="progressWrap">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="btn-group" id="btnGroup">
+            <button class="btn-danger" id="quitBtn">ゲームをやめる</button>
+        </div>
+    </div>
+
+    <!-- 最終暗転コンテナ -->
+    <div class="blackout" id="blackoutScreen">
+        <div class="blackout-text" id="finalText1">……おつかれさまでした。</div>
+        <div class="blackout-text" id="finalText2"></div>
+        <div class="blackout-text" id="finalText3" style="color: #ffc107; font-weight: bold; font-size: 1rem; margin-top: 30px;">でも、ブラウザは閉じてください。</div>
+    </div>
+
+    <script>
+        let score = 0;
+        let phase = 1;
+
+        const title = document.getElementById('title');
+        const message = document.getElementById('message');
+        const btnGroup = document.getElementById('btnGroup');
+        const quitBtn = document.getElementById('quitBtn');
+        const scoreDisplay = document.getElementById('score');
+        const progressWrap = document.getElementById('progressWrap');
+        const progressBar = document.getElementById('progressBar');
+        const gameCard = document.getElementById('gameCard');
+        const blackoutScreen = document.getElementById('blackoutScreen');
+        const finalText1 = document.getElementById('finalText1');
+        const finalText2 = document.getElementById('finalText2');
+        const finalText3 = document.getElementById('finalText3');
+
+        // 音声や外部アクセス、妨害処理は一切ありません。安全な処理のみで構成されています。
+
+        function updateScore() {
+            score++;
+            scoreDisplay.textContent = score;
+        }
+
+        // 初期ボタンイベント
+        quitBtn.addEventListener('click', handleQuitEvent);
+
+        function handleQuitEvent() {
+            if (phase === 1) {
+                // 1回目：しつこい確認
+                updateScore();
+                title.textContent = "確認";
+                message.textContent = "本当にやめますか？";
+                btnGroup.innerHTML = `
+                    <button class="btn-danger" id="yes1">はい</button>
+                    <button class="btn-secondary" id="no1">いいえ</button>
+                `;
+                
+                document.getElementById('no1').addEventListener('click', () => resetToMain("やめるのをやめたんですね！素晴らしい選択です！"));
+                document.getElementById('yes1').addEventListener('click', () => {
+                    message.textContent = "……本当に本当に？";
+                    btnGroup.innerHTML = `<button class="btn-danger" id="yes2">はい（確実にやめる）</button>`;
+                    document.getElementById('yes2').addEventListener('click', () => {
+                        phase = 2;
+                        handleQuitEvent();
+                    });
+                });
+
+            } else if (phase === 2) {
+                // 2回目：プログレスバー99%
+                updateScore();
+                title.textContent = "システム処理中";
+                message.textContent = "ゲームを終了しています……";
+                btnGroup.innerHTML = "";
+                progressWrap.style.display = "block";
+                
+                let width = 0;
+                const interval = setInterval(() => {
+                    if (width >= 99) {
+                        clearInterval(interval);
+                        setTimeout(() => {
+                            progressWrap.style.display = "none";
+                            title.textContent = "お知らせ";
+                            message.textContent = "やっぱりやめたくなくなりました。終了を撤回します。";
+                            btnGroup.innerHTML = `<button class="btn-danger" id="nextPhase">えぇ……（すすむ）</button>`;
+                            document.getElementById('nextPhase').addEventListener('click', () => {
+                                phase = 3;
+                                resetToMain("気を取り直して、もう一度やめてみましょう。");
+                            });
+                        }, 800);
+                    } else {
+                        width += (99 - width) * 0.15 + 0.5; // 最初は早く、徐々に遅くなるリアルな動き
+                        if (width > 99) width = 99;
+                        progressBar.style.width = width + "%";
+                    }
+                }, 40);
+
+            } else if (phase === 3) {
+                // 3回目：怪しい警告文
+                updateScore();
+                title.textContent = "最終警告？";
+                message.textContent = "本当にそのボタン、押すんですか？PCが爆発したりはしませんが、ゲームがすごく悲しみます。";
+                btnGroup.innerHTML = `
+                    <button class="btn-danger" id="pressBtn">そのボタン</button>
+                    <button class="btn-secondary" id="cancelBtn">押さない</button>
+                `;
+                
+                document.getElementById('cancelBtn').addEventListener('click', () => resetToMain("ゲームの気持ちを考えてくれてありがとうございます！"));
+                document.getElementById('pressBtn').addEventListener('click', () => {
+                    phase = 4;
+                    handleQuitEvent();
+                });
+
+            } else if (phase === 4) {
+                // 4回目：面白かったですかアンケート
+                updateScore();
+                title.textContent = "アンケート";
+                message.textContent = "終了処理を開始します。その前に最後にひとつだけ質問があります。このゲーム、面白かったですか？";
+                btnGroup.innerHTML = `
+                    <button class="btn-danger" id="ansYes">はい</button>
+                    <button class="btn-secondary" id="ansNo">いいえ</button>
+                `;
+
+                const reaction = (text) => {
+                    title.textContent = "ありがとうございます";
+                    message.textContent = text;
+                    btnGroup.innerHTML = `<button class="btn-danger" id="goTo5">次へ</button>`;
+                    document.getElementById('goTo5').addEventListener('click', () => {
+                        phase = 5;
+                        resetToMain("さあ、今度こそやめられるでしょうか？");
+                    });
+                };
+
+                document.getElementById('ansYes').addEventListener('click', () => {
+                    reaction("面白いと言っていただけて嬉しいので、もっと遊べるように終了ボタンを隠しておきますね！");
+                });
+                document.getElementById('ansNo').addEventListener('click', () => {
+                    reaction("面白くなかっただなんてショックです……。面白くなるまで絶対に帰しません！");
+                });
+
+            } else if (phase === 5) {
+                // 5回目：俊敏に逃げるボタン（ワープではなく、0.15秒の滑らかな高速移動で押せるレベル）
+                updateScore();
+                title.textContent = "必死なゲーム";
+                message.textContent = "待ってください！もう少しだけ！ほら、やめるボタンを押せるかな！？（※本気を出せばギリギリ押せます）";
+                
+                btnGroup.innerHTML = `<button class="btn-danger fleeing-btn" id="fleeBtn">ゲームをやめる</button>`;
+                const fleeBtn = document.getElementById('fleeBtn');
+                
+                // 初期位置をカードの中央下部にする
+                fleeBtn.style.position = "absolute";
+                fleeBtn.style.left = "calc(50% - 75px)";
+                fleeBtn.style.top = "200px";
+                fleeBtn.style.width = "150px";
+
+                let escapeCount = 0;
+
+                const moveButton = (e) => {
+                    // ユーザーが高速でマウスを動かせばクリックできるよう、たまに逃げ遅れる隙（確率）を作るか、
+                    // もしくは一定回数以上逃げたら力尽きる仕様に
+                    escapeCount++;
+                    
+                    if (escapeCount > 6) {
+                        // 6回以上逃げ回ったら、ボタンが疲れて動かなくなる
+                        fleeBtn.removeEventListener('mouseenter', moveButton);
+                        fleeBtn.removeEventListener('touchstart', moveButton);
+                        title.textContent = "ハァ……ハァ……";
+                        message.textContent = "逃げ疲れました……。もう動きません。今なら押せます。";
+                        fleeBtn.style.transition = "all 0.3s ease";
+                        return;
+                    }
+
+                    // コンテナの範囲内で移動
+                    const cardRect = gameCard.getBoundingClientRect();
+                    const btnRect = fleeBtn.getBoundingClientRect();
+
+                    // コンテナ内の安全なランダム座標（はみ出さないように）
+                    const padding = 20;
+                    const minX = padding;
+                    const maxX = cardRect.width - btnRect.width - padding;
+                    const minY = 120; // タイトルやメッセージを避ける
+                    const maxY = cardRect.height - btnRect.height - padding;
+
+                    const randomX = Math.random() * (maxX - minX) + minX;
+                    const randomY = Math.random() * (maxY - minY) + minY;
+
+                    fleeBtn.style.left = randomX + "px";
+                    fleeBtn.style.top = randomY + "px";
+                    
+                    // 逃げるたびにスコアアップ（プレイヤーへの嫌がらせ）
+                    updateScore();
+                };
+
+                fleeBtn.addEventListener('mouseenter', moveButton);
+                fleeBtn.addEventListener('touchstart', moveButton);
+
+                fleeBtn.addEventListener('click', () => {
+                    phase = 6;
+                    resetToMain("信じられない動体視力とクリック速度です……！完敗しました。");
+                });
+
+            } else if (phase === 6) {
+                // 6回目：ゲーム側の哀願
+                updateScore();
+                title.textContent = "おねがい";
+                message.textContent = "ここまで来たら、あと5秒だけ、いや、10秒だけでいいのでお話ししませんか？駄目ですか？本当に？";
+                btnGroup.innerHTML = `
+                    <button class="btn-danger" id="finalGo">本当にやめる</button>
+                    <button class="btn-secondary" id="stayBtn">あと5秒だけ付き合う</button>
+                `;
+
+                document.getElementById('stayBtn').addEventListener('click', () => {
+                    updateScore();
+                    title.textContent = "歓喜";
+                    message.textContent = "ありがとう！約束の5秒が経過しました！ではゲームを続行しましょう！";
+                    btnGroup.innerHTML = `<button class="btn-danger" id="backTo6">あ、やっぱやめる</button>`;
+                    document.getElementById('backTo6').addEventListener('click', handleQuitEvent);
+                });
+
+                document.getElementById('finalGo').addEventListener('click', () => {
+                    phase = 7;
+                    handleQuitEvent();
+                });
+
+            } else {
+                // 最終オチ：本物の終了画面
+                title.textContent = "最終確認";
+                message.textContent = "本当にゲームを終了しますか？";
+                btnGroup.innerHTML = `<button class="btn-danger" id="trueEndBtn" style="padding: 1rem 3rem; font-size: 1.2rem;">はい</button>`;
+                
+                document.getElementById('trueEndBtn').addEventListener('click', triggerFinalEnd);
+            }
+        }
+
+        function resetToMain(alertText) {
+            title.textContent = "ゲームをやめるゲーム";
+            message.textContent = alertText + " 下のボタンからいつでも終了できます。";
+            btnGroup.innerHTML = `<button class="btn-danger" id="quitBtn">ゲームをやめる</button>`;
+            document.getElementById('quitBtn').addEventListener('click', handleQuitEvent);
+        }
+
+        function triggerFinalEnd() {
+            // 暗転処理
+            blackoutScreen.style.pointerEvents = "auto";
+            blackoutScreen.style.opacity = "1";
+
+            // スコアに応じたコメント判定
+            let comment = "";
+            if (score <= 2) {
+                comment = "普通にやめられました。";
+            } else if (score <= 5) {
+                comment = "まあまあ引き止められました。";
+            } else if (score <= 10) {
+                comment = "かなり粘りましたね。";
+            } else if (score <= 20) {
+                comment = "そこまでしてやめたいんですか？";
+            } else {
+                comment = "あなたとこのゲーム、どっちがしつこいんですか？";
+            }
+
+            finalText2.innerHTML = `あなたはゲームを <span style="color: #ff4757; font-size: 1.5rem; font-weight: bold;">${score}</span> 回やめようとしました。<br><br><span style="font-size: 1rem; color: #ced4da;">${comment}</span>`;
+
+            // 時間差でテキストを浮き上がらせる
+            setTimeout(() => {
+                finalText1.style.opacity = "1";
+            }, 1000);
+
+            setTimeout(() => {
+                finalText2.style.opacity = "1";
+            }, 2500);
+
+            setTimeout(() => {
+                finalText3.style.opacity = "1";
+            }, 4500);
+        }
+    </script>
+</body>
+</html>
